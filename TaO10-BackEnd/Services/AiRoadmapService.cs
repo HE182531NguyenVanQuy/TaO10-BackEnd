@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TaO10_BackEnd.Common;
 using TaO10_BackEnd.DTOs.AiRoadmaps;
+using TaO10_BackEnd.Exceptions;
 using TaO10_BackEnd.Models;
 
 namespace TaO10_BackEnd.Services;
@@ -10,14 +11,35 @@ public class AiRoadmapService : IAiRoadmapService
 {
     private readonly AppDbContext _dbContext;
     private readonly IGeminiRoadmapService _geminiRoadmapService;
+    private readonly ILogger<AiRoadmapService> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly IReadOnlyList<string> DefaultPracticeTypeOrder =
+    [
+        QuestionTypeConstants.MultipleChoice,
+        QuestionTypeConstants.Reading,
+        QuestionTypeConstants.Cloze,
+        QuestionTypeConstants.ErrorCorrection,
+        QuestionTypeConstants.Pronunciation,
+        QuestionTypeConstants.Stress,
+        QuestionTypeConstants.Communication,
+        QuestionTypeConstants.Synonym,
+        QuestionTypeConstants.Antonym,
+        QuestionTypeConstants.Rewrite,
+        QuestionTypeConstants.RewriteWithGivenWords,
+        QuestionTypeConstants.SentenceInsertion,
+        QuestionTypeConstants.SignNotice,
+        QuestionTypeConstants.Vocabulary,
+        QuestionTypeConstants.ArrangeCompleteParagraph
+    ];
 
     public AiRoadmapService(
         AppDbContext dbContext,
-        IGeminiRoadmapService geminiRoadmapService)
+        IGeminiRoadmapService geminiRoadmapService,
+        ILogger<AiRoadmapService> logger)
     {
         _dbContext = dbContext;
         _geminiRoadmapService = geminiRoadmapService;
+        _logger = logger;
     }
 
     public async Task<StudyRoadmapDto?> GetRoadmapAsync(Guid userId)
@@ -31,7 +53,7 @@ public class AiRoadmapService : IAiRoadmapService
         var attempt = await GetLatestCompletedAttemptAsync(userId);
         if (attempt == null || attempt.UserAnswers.Count == 0)
         {
-            throw new InvalidOperationException("Bạn cần làm bài ít nhất 1 lần để có dữ liệu phân tích");
+            throw new InvalidOperationException("Báº¡n cáº§n lÃ m bÃ i Ã­t nháº¥t 1 láº§n Ä‘á»ƒ cÃ³ dá»¯ liá»‡u phÃ¢n tÃ­ch");
         }
 
         var existing = await GetExistingRoadmapAsync(userId);
@@ -40,7 +62,7 @@ public class AiRoadmapService : IAiRoadmapService
             return MapToDto(existing);
         }
 
-        var generated = await _geminiRoadmapService.GenerateRoadmapAsync(attempt);
+        var generated = await GenerateWithFallbackAsync(attempt);
         var roadmap = existing ?? CreateRoadmap(userId);
         ApplyGeneratedRoadmap(roadmap, attempt, generated);
 
@@ -48,6 +70,19 @@ public class AiRoadmapService : IAiRoadmapService
 
         roadmap.UserExamAttempt = attempt;
         return MapToDto(roadmap);
+    }
+
+    private async Task<GeneratedRoadmap> GenerateWithFallbackAsync(UserExamAttempt attempt)
+    {
+        try
+        {
+            return await _geminiRoadmapService.GenerateRoadmapAsync(attempt);
+        }
+        catch (Exception ex) when (ex is GeminiUnavailableException or GeminiQuotaExceededException or JsonException)
+        {
+            _logger.LogWarning(ex, "Gemini roadmap failed. Using local fallback roadmap JSON.");
+            return AiRoadmapFallbackLibrary.GetRandomRoadmap();
+        }
     }
 
     private async Task<UserStudyRoadmap?> GetExistingRoadmapAsync(Guid userId)
@@ -98,12 +133,13 @@ public class AiRoadmapService : IAiRoadmapService
         roadmap.Strengths = JsonSerializer.Serialize(generated.Strengths, _jsonOptions);
         roadmap.Weaknesses = JsonSerializer.Serialize(generated.Weaknesses, _jsonOptions);
         roadmap.Weeks = JsonSerializer.Serialize(
-            generated.Weeks.Select(week => new StudyRoadmapWeekDto
+            EnrichPracticeTargets(generated.Weeks.Select(week => new StudyRoadmapWeekDto
             {
                 Title = week.Title,
                 Goal = week.Goal,
-                Tasks = week.Tasks
-            }).ToList(),
+                Tasks = week.Tasks,
+                PracticeType = week.PracticeType
+            }).ToList(), generated.Weaknesses),
             _jsonOptions);
         roadmap.DailyTime = generated.DailyTime;
         roadmap.NextAction = generated.NextAction;
@@ -121,7 +157,7 @@ public class AiRoadmapService : IAiRoadmapService
             Summary = roadmap.Summary,
             Strengths = DeserializeList(roadmap.Strengths),
             Weaknesses = DeserializeList(roadmap.Weaknesses),
-            Weeks = DeserializeWeeks(roadmap.Weeks),
+            Weeks = EnrichPracticeTargets(DeserializeWeeks(roadmap.Weeks), DeserializeList(roadmap.Weaknesses)),
             DailyTime = roadmap.DailyTime,
             NextAction = roadmap.NextAction
         };
@@ -136,4 +172,127 @@ public class AiRoadmapService : IAiRoadmapService
     {
         return JsonSerializer.Deserialize<List<StudyRoadmapWeekDto>>(value, _jsonOptions) ?? new List<StudyRoadmapWeekDto>();
     }
+
+    private static List<StudyRoadmapWeekDto> EnrichPracticeTargets(
+        List<StudyRoadmapWeekDto> weeks,
+        List<string> weaknesses)
+    {
+        var fallbackWeaknessText = string.Join(' ', weaknesses);
+        var usedPracticeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = 0; index < weeks.Count; index++)
+        {
+            var week = weeks[index];
+            var candidateText = string.Join(
+                ' ',
+                new[]
+                {
+                    week.PracticeType,
+                    week.Title,
+                    week.Goal,
+                    string.Join(' ', week.Tasks),
+                    fallbackWeaknessText
+                });
+
+            var practiceType = EnsureUniquePracticeType(InferPracticeType(candidateText), usedPracticeTypes, candidateText);
+            week.PracticeType = practiceType;
+            week.PracticeUrl = $"/luyen-tap?type={Uri.EscapeDataString(practiceType)}&week={index + 1}";
+        }
+
+        return weeks;
+    }
+
+    private static string EnsureUniquePracticeType(
+        string preferredType,
+        HashSet<string> usedPracticeTypes,
+        string contextText)
+    {
+        var normalizedPreferred = QuestionTypeConstants.Normalize(preferredType);
+        if (IsUsablePracticeType(normalizedPreferred) && usedPracticeTypes.Add(normalizedPreferred))
+            return normalizedPreferred;
+
+        foreach (var candidate in GetCandidatePracticeTypes(contextText))
+        {
+            var normalized = QuestionTypeConstants.Normalize(candidate);
+            if (IsUsablePracticeType(normalized) && usedPracticeTypes.Add(normalized))
+                return normalized;
+        }
+
+        foreach (var fallbackType in DefaultPracticeTypeOrder)
+        {
+            if (usedPracticeTypes.Add(fallbackType))
+                return fallbackType;
+        }
+
+        return normalizedPreferred;
+    }
+
+    private static IEnumerable<string> GetCandidatePracticeTypes(string text)
+    {
+        var lowerText = RemoveDiacritics(text).ToLowerInvariant();
+
+        foreach (var type in QuestionTypeConstants.All)
+        {
+            if (!IsUsablePracticeType(type))
+                continue;
+
+            var key = RemoveDiacritics(type).ToLowerInvariant();
+            if (lowerText.Contains(key))
+                yield return type;
+        }
+    }
+
+    private static bool IsUsablePracticeType(string? type)
+    {
+        return !string.IsNullOrWhiteSpace(type) &&
+            !string.Equals(type, QuestionTypeConstants.Other, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(type, QuestionTypeConstants.Mixed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string InferPracticeType(string text)
+    {
+        var normalized = QuestionTypeConstants.Normalize(text);
+        if (!string.Equals(normalized, QuestionTypeConstants.Other, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(normalized, text?.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized;
+        }
+
+        var lowerText = RemoveDiacritics(text).ToLowerInvariant();
+        foreach (var type in QuestionTypeConstants.All)
+        {
+            if (type == QuestionTypeConstants.Other)
+                continue;
+
+            var key = RemoveDiacritics(type).ToLowerInvariant();
+            if (lowerText.Contains(key))
+                return type;
+        }
+
+        return QuestionTypeConstants.MultipleChoice;
+    }
+
+    private static string RemoveDiacritics(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.Normalize(System.Text.NormalizationForm.FormD);
+        var builder = new System.Text.StringBuilder(normalized.Length);
+
+        foreach (var ch in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark)
+                continue;
+
+            builder.Append(ch switch
+            {
+                '\u0111' or '\u0110' => 'd',
+                _ => ch
+            });
+        }
+
+        return builder.ToString().Normalize(System.Text.NormalizationForm.FormC);
+    }
 }
+

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using TaO10_BackEnd.Common;
 using TaO10_BackEnd.Exceptions;
 using TaO10_BackEnd.Models;
 
@@ -235,7 +236,9 @@ public class GeminiRoadmapService : IGeminiRoadmapService
 Bạn là giáo viên tiếng Anh luyện thi vào lớp 10. Tạo lộ trình học cá nhân hóa 3 tuần từ thống kê bài làm.
 Chỉ trả về JSON hợp lệ, không markdown, không giải thích.
 Schema:
-{"summary":"string","strengths":["string"],"weaknesses":["string"],"weeks":[{"title":"string","goal":"string","tasks":["string"]}],"dailyTime":"string","nextAction":"string"}
+{"summary":"string","strengths":["string"],"weaknesses":["string"],"weeks":[{"title":"string","goal":"string","tasks":["string"],"practiceType":"string"}],"dailyTime":"string","nextAction":"string"}
+practiceType phải là một trong các type sau: {{string.Join(", ", QuestionTypeConstants.All)}}.
+Mỗi tuần chọn đúng 1 practiceType ứng với điểm yếu cần luyện nhiều nhất tuần đó, ưu tiên section sai hoặc bỏ qua nhiều.
 Dữ liệu:
 {{JsonSerializer.Serialize(attemptSummary, _jsonOptions)}}
 """;
@@ -287,7 +290,8 @@ Dữ liệu:
         {
             Title = week.Title,
             Goal = week.Goal,
-            Tasks = week.Tasks.Where(item => !string.IsNullOrWhiteSpace(item)).ToList()
+            Tasks = week.Tasks.Where(item => !string.IsNullOrWhiteSpace(item)).ToList(),
+            PracticeType = QuestionTypeConstants.Normalize(week.PracticeType)
         }).ToList();
 
         return roadmap;
@@ -313,7 +317,7 @@ Dữ liệu:
 
     private static string NormalizeSection(string? section)
     {
-        return string.IsNullOrWhiteSpace(section) ? "Other" : section.Trim();
+        return QuestionTypeConstants.Normalize(section);
     }
 
     private static bool ShouldRetry(HttpStatusCode statusCode)

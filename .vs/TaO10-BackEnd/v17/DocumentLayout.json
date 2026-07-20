@@ -3,12 +3,12 @@
   "WorkspaceRootPath": "D:\\TaO10-BackEnd\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|d:\\tao10-backend\\tao10-backend\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
-      "RelativeMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|solutionrelative:tao10-backend\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|d:\\tao10-backend\\tao10-backend\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|solutionrelative:tao10-backend\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|d:\\tao10-backend\\tao10-backend\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|solutionrelative:tao10-backend\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{DC4D5BC1-53DD-41F0-8453-EE5637554D6A}|TaO10-BackEnd\\TaO10-BackEnd.csproj|d:\\tao10-backend\\tao10-backend\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
@@ -22,7 +22,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 177,
+          "SelectedChildIndex": 179,
           "Children": [
             {
               "$type": "Bookmark",
@@ -734,7 +734,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "appsettings.Development.json",
               "DocumentMoniker": "D:\\TaO10-BackEnd\\TaO10-BackEnd\\appsettings.Development.json",
               "RelativeDocumentMoniker": "TaO10-BackEnd\\appsettings.Development.json",
@@ -742,8 +742,7 @@
               "RelativeToolTip": "TaO10-BackEnd\\appsettings.Development.json",
               "ViewState": "AgIAABIAAAAAAAAAAAAAABoAAAAXAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2026-06-30T16:37:12.451Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-06-30T16:37:12.451Z"
             },
             {
               "$type": "Document",
@@ -755,18 +754,17 @@
               "RelativeToolTip": "TaO10-BackEnd\\appsettings.json",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2026-06-30T16:37:05.921Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-06-30T16:37:05.921Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 0,
               "Title": "Program.cs",
               "DocumentMoniker": "D:\\TaO10-BackEnd\\TaO10-BackEnd\\Program.cs",
               "RelativeDocumentMoniker": "TaO10-BackEnd\\Program.cs",
               "ToolTip": "D:\\TaO10-BackEnd\\TaO10-BackEnd\\Program.cs",
               "RelativeToolTip": "TaO10-BackEnd\\Program.cs",
-              "ViewState": "AgIAAIoAAAAAAAAAAAAAAJcAAAAeAAAAAAAAAA==",
+              "ViewState": "AgIAAJIAAAAAAAAAAIAwwKcAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-04-25T20:07:35.625Z",
               "EditorCaption": ""

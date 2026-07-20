@@ -30,5 +30,9 @@ public class StudyRoadmapWeekDto
     public string Goal { get; set; } = string.Empty;
 
     public List<string> Tasks { get; set; } = new();
+
+    public string PracticeType { get; set; } = string.Empty;
+
+    public string PracticeUrl { get; set; } = string.Empty;
 }
 

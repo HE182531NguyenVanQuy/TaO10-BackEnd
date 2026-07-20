@@ -29,4 +29,6 @@ public sealed class StudyRoadmapWeekResult
     public string Goal { get; set; } = string.Empty;
 
     public List<string> Tasks { get; set; } = new();
+
+    public string PracticeType { get; set; } = string.Empty;
 }
