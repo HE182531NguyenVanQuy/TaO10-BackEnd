@@ -37,7 +37,8 @@ public class ExamRepository : Repository<Exam>, IExamRepository
             .Where(e =>
                 e.Status.EntityType == AppStatusCodes.EntityTypes.Exam &&
                 e.Status.Code == AppStatusCodes.Exams.Active)
-            .OrderByDescending(e => e.CreatedAt);
+            .OrderByDescending(e => e.CreatedAt)
+            .ThenBy(e => e.ExamId);
 
         int totalCount = await query.CountAsync();
         var exams = await query

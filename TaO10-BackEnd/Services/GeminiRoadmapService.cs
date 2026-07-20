@@ -1,32 +1,25 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Google.Apis.Auth.OAuth2;
+using TaO10_BackEnd.Common;
 using TaO10_BackEnd.Exceptions;
 using TaO10_BackEnd.Models;
 
 namespace TaO10_BackEnd.Services;
 
-public class GeminiRoadmapService : IGeminiRoadmapService
+public class OpenRouterRoadmapService : IOpenRouterRoadmapService
 {
-    private const int MaxAttemptsPerModel = 5;
-    private static readonly string[] GeminiOAuthScopes =
-    {
-        "https://www.googleapis.com/auth/generative-language",
-        "https://www.googleapis.com/auth/cloud-platform"
-    };
-
+    private const int MaxAttempts = 2;
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
-    private readonly ILogger<GeminiRoadmapService> _logger;
+    private readonly ILogger<OpenRouterRoadmapService> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
-    public GeminiRoadmapService(
+    public OpenRouterRoadmapService(
         HttpClient httpClient,
         IConfiguration configuration,
-        ILogger<GeminiRoadmapService> logger)
+        ILogger<OpenRouterRoadmapService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
@@ -35,81 +28,61 @@ public class GeminiRoadmapService : IGeminiRoadmapService
 
     public async Task<GeneratedRoadmap> GenerateRoadmapAsync(UserExamAttempt attempt, CancellationToken cancellationToken = default)
     {
-        var auth = await GetGeminiAuthAsync(cancellationToken);
-        if (auth == null)
+        var apiKey = _configuration["OpenRouter:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new GeminiUnavailableException("Chua cau hinh thong tin xac thuc Gemini tren backend.");
+            throw new OpenRouterUnavailableException("Chưa cấu hình OpenRouter API key trên backend.");
         }
 
         var prompt = BuildPrompt(attempt);
-        var models = GetConfiguredModels();
-
-        for (var modelIndex = 0; modelIndex < models.Count; modelIndex++)
-        {
-            var model = models[modelIndex];
-            try
-            {
-                return await GenerateWithModelAsync(model, auth, prompt, cancellationToken);
-            }
-            catch (GeminiUnavailableException) when (modelIndex < models.Count - 1)
-            {
-                _logger.LogWarning(
-                    "Gemini model {Model} remained unavailable after {MaxAttempts} attempts. Falling back to {FallbackModel}.",
-                    model,
-                    MaxAttemptsPerModel,
-                    models[modelIndex + 1]);
-            }
-        }
-
-        throw new GeminiUnavailableException();
+        var model = _configuration["OpenRouter:Model"]?.Trim();
+        return await GenerateWithModelAsync(
+            string.IsNullOrWhiteSpace(model) ? "openrouter/free" : model,
+            apiKey,
+            prompt,
+            cancellationToken);
     }
 
     private async Task<GeneratedRoadmap> GenerateWithModelAsync(
         string model,
-        GeminiAuth auth,
+        string apiKey,
         string prompt,
         CancellationToken cancellationToken)
     {
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
         var requestBody = BuildRequestBody(prompt);
 
-        for (var attemptNumber = 1; attemptNumber <= MaxAttemptsPerModel; attemptNumber++)
+        for (var attemptNumber = 1; attemptNumber <= MaxAttempts; attemptNumber++)
         {
             var stopwatch = Stopwatch.StartNew();
 
             try
             {
-                using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
-                {
-                    Content = content
-                };
-                ApplyAuthentication(request, auth);
-
+                using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                request.Headers.TryAddWithoutValidation("HTTP-Referer", _configuration["OpenRouter:SiteUrl"] ?? "https://tao10m.com");
+                request.Headers.TryAddWithoutValidation("X-Title", _configuration["OpenRouter:AppName"] ?? "TaO10");
+                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.SendAsync(request, cancellationToken);
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 stopwatch.Stop();
 
                 _logger.LogInformation(
-                    "Gemini request completed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. AuthType: {AuthType}. AuthPrefix: {AuthPrefix}. StatusCode: {StatusCode}. DurationMs: {DurationMs}. ResponseBody: {ResponseBody}",
+                    "OpenRouter request completed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. StatusCode: {StatusCode}. DurationMs: {DurationMs}",
                     model,
                     attemptNumber,
-                    MaxAttemptsPerModel,
+                    MaxAttempts,
                     prompt.Length,
-                    auth.Type,
-                    GetSecretPrefix(auth.Value),
                     (int)response.StatusCode,
-                    stopwatch.ElapsedMilliseconds,
-                    responseBody);
+                    stopwatch.ElapsedMilliseconds);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    return ParseGeminiRoadmapResponse(responseBody);
+                    return ParseOpenRouterRoadmapResponse(responseBody);
                 }
 
-                if (!ShouldRetry(response.StatusCode) || attemptNumber == MaxAttemptsPerModel)
+                if (!ShouldRetry(response.StatusCode) || attemptNumber == MaxAttempts)
                 {
-                    ThrowGeminiException(response.StatusCode);
+                    ThrowOpenRouterException(response.StatusCode);
                 }
             }
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
@@ -117,16 +90,16 @@ public class GeminiRoadmapService : IGeminiRoadmapService
                 stopwatch.Stop();
                 _logger.LogWarning(
                     ex,
-                    "Gemini request timed out. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
+                    "OpenRouter request timed out. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
                     model,
                     attemptNumber,
-                    MaxAttemptsPerModel,
+                    MaxAttempts,
                     prompt.Length,
                     stopwatch.ElapsedMilliseconds);
 
-                if (attemptNumber == MaxAttemptsPerModel)
+                if (attemptNumber == MaxAttempts)
                 {
-                    throw new GeminiUnavailableException();
+                    throw new OpenRouterUnavailableException();
                 }
             }
             catch (HttpRequestException ex)
@@ -134,98 +107,47 @@ public class GeminiRoadmapService : IGeminiRoadmapService
                 stopwatch.Stop();
                 _logger.LogWarning(
                     ex,
-                    "Gemini request failed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
+                    "OpenRouter request failed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
                     model,
                     attemptNumber,
-                    MaxAttemptsPerModel,
+                    MaxAttempts,
                     prompt.Length,
                     stopwatch.ElapsedMilliseconds);
 
-                if (attemptNumber == MaxAttemptsPerModel)
+                if (attemptNumber == MaxAttempts)
                 {
-                    throw new GeminiUnavailableException();
+                    throw new OpenRouterUnavailableException();
                 }
             }
 
             var delay = GetRetryDelay(attemptNumber);
             _logger.LogInformation(
-                "Retrying Gemini request after {DelayMs}ms. Model: {Model}. NextAttempt: {NextAttempt}/{MaxAttempts}",
+                "Retrying OpenRouter request after {DelayMs}ms. Model: {Model}. NextAttempt: {NextAttempt}/{MaxAttempts}",
                 delay.TotalMilliseconds,
                 model,
                 attemptNumber + 1,
-                MaxAttemptsPerModel);
+                MaxAttempts);
             await Task.Delay(delay, cancellationToken);
         }
 
-        throw new GeminiUnavailableException();
-    }
-
-    private async Task<GeminiAuth?> GetGeminiAuthAsync(CancellationToken cancellationToken)
-    {
-        var serviceAccountJson = _configuration["Gemini:ServiceAccountJson"]?.Trim();
-        if (!string.IsNullOrWhiteSpace(serviceAccountJson))
-        {
-            var credential = GoogleCredential
-                .FromJson(serviceAccountJson)
-                .CreateScoped(GeminiOAuthScopes);
-            var token = await ((ITokenAccess)credential).GetAccessTokenForRequestAsync(cancellationToken: cancellationToken);
-            return new GeminiAuth("oauth-service-account", token);
-        }
-
-        var accessToken = _configuration["Gemini:AccessToken"]?.Trim();
-        if (!string.IsNullOrWhiteSpace(accessToken))
-        {
-            return new GeminiAuth("oauth-access-token", accessToken);
-        }
-
-        var apiKey = _configuration["Gemini:ApiKey"]?.Trim();
-        if (!string.IsNullOrWhiteSpace(apiKey))
-        {
-            return new GeminiAuth("api-key", apiKey);
-        }
-
-        return null;
-    }
-
-    private static void ApplyAuthentication(HttpRequestMessage request, GeminiAuth auth)
-    {
-        if (auth.Type == "api-key")
-        {
-            request.Headers.Add("x-goog-api-key", auth.Value);
-            return;
-        }
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.Value);
-    }
-
-    private List<string> GetConfiguredModels()
-    {
-        var models = new[] { _configuration["Gemini:Model"], _configuration["Gemini:FallbackModel"] }
-            .Where(model => !string.IsNullOrWhiteSpace(model))
-            .Select(model => model!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return models.Count > 0 ? models : new List<string> { "gemini-2.5-flash" };
+        throw new OpenRouterUnavailableException();
     }
 
     private string BuildRequestBody(string prompt)
     {
         var request = new
         {
-            contents = new[]
+            model = _configuration["OpenRouter:Model"] ?? "openrouter/free",
+            messages = new[]
             {
                 new
                 {
                     role = "user",
-                    parts = new[] { new { text = prompt } }
+                    content = prompt
                 }
             },
-            generationConfig = new
-            {
-                temperature = 0.25,
-                responseMimeType = "application/json"
-            }
+            temperature = 0.25,
+            response_format = new { type = "json_object" }
         };
 
         return JsonSerializer.Serialize(request, _jsonOptions);
@@ -289,22 +211,22 @@ public class GeminiRoadmapService : IGeminiRoadmapService
 Bạn là giáo viên tiếng Anh luyện thi vào lớp 10. Tạo lộ trình học cá nhân hóa 3 tuần từ thống kê bài làm.
 Chỉ trả về JSON hợp lệ, không markdown, không giải thích.
 Schema:
-{"summary":"string","strengths":["string"],"weaknesses":["string"],"weeks":[{"title":"string","goal":"string","tasks":["string"]}],"dailyTime":"string","nextAction":"string"}
+{"summary":"string","strengths":["string"],"weaknesses":["string"],"weeks":[{"title":"string","goal":"string","tasks":["string"],"practiceType":"string"}],"dailyTime":"string","nextAction":"string"}
+practiceType phải là một trong các type sau: {{string.Join(", ", QuestionTypeConstants.All)}}.
+Mỗi tuần chọn đúng 1 practiceType ứng với điểm yếu cần luyện nhiều nhất tuần đó, ưu tiên section sai hoặc bỏ qua nhiều.
 Dữ liệu:
 {{JsonSerializer.Serialize(attemptSummary, _jsonOptions)}}
 """;
     }
 
-    private GeneratedRoadmap ParseGeminiRoadmapResponse(string responseBody)
+    private GeneratedRoadmap ParseOpenRouterRoadmapResponse(string responseBody)
     {
-        var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody, _jsonOptions);
-        var text = string.Join(
-            string.Empty,
-            geminiResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.Select(part => part.Text ?? string.Empty) ?? Array.Empty<string>());
+        var openRouterResponse = JsonSerializer.Deserialize<OpenRouterResponse>(responseBody, _jsonOptions);
+        var text = openRouterResponse?.Choices?.FirstOrDefault()?.Message?.Content;
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            throw new GeminiUnavailableException("Gemini không trả về nội dung lộ trình.");
+            throw new OpenRouterUnavailableException("OpenRouter không trả về nội dung lộ trình.");
         }
 
         return ParseGeneratedRoadmap(text);
@@ -330,7 +252,7 @@ Dữ liệu:
         var roadmap = JsonSerializer.Deserialize<GeneratedRoadmap>(cleaned, _jsonOptions);
         if (roadmap == null)
         {
-            throw new GeminiUnavailableException("Không đọc được JSON lộ trình từ Gemini.");
+            throw new OpenRouterUnavailableException("Không đọc được JSON lộ trình từ OpenRouter.");
         }
 
         ValidateGeneratedRoadmap(roadmap);
@@ -341,7 +263,8 @@ Dữ liệu:
         {
             Title = week.Title,
             Goal = week.Goal,
-            Tasks = week.Tasks.Where(item => !string.IsNullOrWhiteSpace(item)).ToList()
+            Tasks = week.Tasks.Where(item => !string.IsNullOrWhiteSpace(item)).ToList(),
+            PracticeType = QuestionTypeConstants.Normalize(week.PracticeType)
         }).ToList();
 
         return roadmap;
@@ -361,13 +284,13 @@ Dữ liệu:
             string.IsNullOrWhiteSpace(roadmap.DailyTime) ||
             string.IsNullOrWhiteSpace(roadmap.NextAction))
         {
-            throw new GeminiUnavailableException("Gemini trả về lộ trình thiếu dữ liệu.");
+            throw new OpenRouterUnavailableException("OpenRouter trả về lộ trình thiếu dữ liệu.");
         }
     }
 
     private static string NormalizeSection(string? section)
     {
-        return string.IsNullOrWhiteSpace(section) ? "Other" : section.Trim();
+        return QuestionTypeConstants.Normalize(section);
     }
 
     private static bool ShouldRetry(HttpStatusCode statusCode)
@@ -385,54 +308,42 @@ Dữ liệu:
         return TimeSpan.FromSeconds(exponentialSeconds) + TimeSpan.FromMilliseconds(jitterMs);
     }
 
-    private static string GetSecretPrefix(string value)
-    {
-        return value.Length <= 6 ? "***" : $"{value[..6]}...";
-    }
-
-    private static void ThrowGeminiException(HttpStatusCode statusCode)
+    private static void ThrowOpenRouterException(HttpStatusCode statusCode)
     {
         if (statusCode == HttpStatusCode.Unauthorized || statusCode == HttpStatusCode.Forbidden)
         {
-            throw new GeminiUnavailableException("Gemini API key khong hop le hoac chua duoc cap quyen.");
+            throw new OpenRouterUnavailableException("OpenRouter API key không hợp lệ hoặc chưa được cấp quyền.");
         }
 
         if (statusCode == HttpStatusCode.TooManyRequests)
         {
-            throw new GeminiQuotaExceededException();
+            throw new OpenRouterQuotaExceededException();
         }
 
         if (statusCode == HttpStatusCode.ServiceUnavailable ||
             statusCode == HttpStatusCode.InternalServerError ||
             statusCode == HttpStatusCode.RequestTimeout)
         {
-            throw new GeminiUnavailableException();
+            throw new OpenRouterUnavailableException();
         }
 
-        throw new GeminiUnavailableException("Không gọi được Gemini để tạo lộ trình.");
+        throw new OpenRouterUnavailableException("Không gọi được OpenRouter để tạo lộ trình.");
     }
 
     private sealed record SectionQuestionResult(string Section, bool IsCorrect, bool IsSkipped);
 
-    private sealed record GeminiAuth(string Type, string Value);
-
-    private sealed class GeminiResponse
+    private sealed class OpenRouterResponse
     {
-        public List<GeminiCandidate>? Candidates { get; set; }
+        public List<OpenRouterChoice>? Choices { get; set; }
     }
 
-    private sealed class GeminiCandidate
+    private sealed class OpenRouterChoice
     {
-        public GeminiContent? Content { get; set; }
+        public OpenRouterMessage? Message { get; set; }
     }
 
-    private sealed class GeminiContent
+    private sealed class OpenRouterMessage
     {
-        public List<GeminiPart>? Parts { get; set; }
-    }
-
-    private sealed class GeminiPart
-    {
-        public string? Text { get; set; }
+        public string? Content { get; set; }
     }
 }

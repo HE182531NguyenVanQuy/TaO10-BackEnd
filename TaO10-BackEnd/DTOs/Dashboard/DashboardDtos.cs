@@ -45,4 +45,45 @@ namespace TaO10_BackEnd.DTOs.Dashboard
         public List<TransactionDto> Items { get; set; } = new List<TransactionDto>();
         public int TotalCount { get; set; }
     }
+
+    public class AdminReportDto
+    {
+        public ReportSummaryDto Summary { get; set; } = new();
+        public List<ExamReportDto> Exams { get; set; } = new();
+        public List<PackageReportDto> Packages { get; set; } = new();
+    }
+
+    public class ReportSummaryDto
+    {
+        public int TotalExams { get; set; }
+        public int TotalAttempts { get; set; }
+        public decimal AverageScore { get; set; }
+        public decimal PassRate { get; set; }
+        public int TotalPackages { get; set; }
+        public int PackagesSold { get; set; }
+        public decimal PackageRevenue { get; set; }
+        public int ActiveSubscribers { get; set; }
+    }
+
+    public class ExamReportDto
+    {
+        public Guid ExamId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public int Attempts { get; set; }
+        public int CompletedAttempts { get; set; }
+        public int UniqueStudents { get; set; }
+        public decimal AverageScore { get; set; }
+        public decimal PassRate { get; set; }
+    }
+
+    public class PackageReportDto
+    {
+        public Guid PackageId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int Price { get; set; }
+        public int Purchases { get; set; }
+        public int ActiveSubscribers { get; set; }
+        public decimal Revenue { get; set; }
+        public int ExamCount { get; set; }
+    }
 }

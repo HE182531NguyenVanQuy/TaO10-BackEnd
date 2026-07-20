@@ -1,12 +1,12 @@
 namespace TaO10_BackEnd.Exceptions;
 
-public class GeminiQuotaExceededException : Exception
+public class OpenRouterQuotaExceededException : Exception
 {
     public string ErrorCode { get; }
 
-    public GeminiQuotaExceededException(
-        string message = "Gemini đang giới hạn lượt gọi, vui lòng thử lại sau ít phút.",
-        string errorCode = "GEMINI_QUOTA_EXCEEDED")
+    public OpenRouterQuotaExceededException(
+        string message = "OpenRouter đang giới hạn lượt gọi, vui lòng thử lại sau ít phút.",
+        string errorCode = "OPENROUTER_QUOTA_EXCEEDED")
         : base(message)
     {
         ErrorCode = errorCode;

@@ -2,7 +2,7 @@ using TaO10_BackEnd.Models;
 
 namespace TaO10_BackEnd.Services;
 
-public interface IGeminiRoadmapService
+public interface IOpenRouterRoadmapService
 {
     Task<GeneratedRoadmap> GenerateRoadmapAsync(UserExamAttempt attempt, CancellationToken cancellationToken = default);
 }
@@ -29,4 +29,6 @@ public sealed class StudyRoadmapWeekResult
     public string Goal { get; set; } = string.Empty;
 
     public List<string> Tasks { get; set; } = new();
+
+    public string PracticeType { get; set; } = string.Empty;
 }

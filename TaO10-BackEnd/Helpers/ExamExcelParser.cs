@@ -1,4 +1,5 @@
 using ClosedXML.Excel;
+using TaO10_BackEnd.Common;
 
 namespace TaO10_BackEnd.Helpers;
 
@@ -55,6 +56,9 @@ public static class ExamExcelParser
             if (string.IsNullOrWhiteSpace(title))
                 continue;
 
+            var questionNumber = GetCellNullableInt(row, columnMap, "QuestionNumber");
+            var rawSection = GetCellString(row, columnMap, "Section");
+
             rows.Add(new ExamExcelImportRow
             {
                 Title = title.Trim(),
@@ -66,8 +70,8 @@ public static class ExamExcelParser
                 ExamType = GetCellString(row, columnMap, "ExamType"),
                 ViewsCount = GetCellInt(row, columnMap, "ViewsCount"),
                 AttemptsCount = GetCellInt(row, columnMap, "AttemptsCount"),
-                QuestionNumber = GetCellNullableInt(row, columnMap, "QuestionNumber"),
-                Section = GetCellString(row, columnMap, "Section"),
+                QuestionNumber = questionNumber,
+                Section = QuestionTypeConstants.Normalize(rawSection, questionNumber),
                 QuestionText = GetCellString(row, columnMap, "QuestionText"),
                 OptionA = GetCellString(row, columnMap, "OptionA"),
                 OptionB = GetCellString(row, columnMap, "OptionB"),

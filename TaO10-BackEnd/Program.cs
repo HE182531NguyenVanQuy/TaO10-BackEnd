@@ -30,9 +30,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy =>
     {
         policy.WithOrigins(allowedOrigins)
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials(); // only if you use cookies; otherwise you can omit AllowCredentials
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -69,7 +69,12 @@ builder.Services.AddScoped<IUserExamAttemptService, UserExamAttemptService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IAiRoadmapService, AiRoadmapService>();
-builder.Services.AddHttpClient<IGeminiRoadmapService, GeminiRoadmapService>();
+builder.Services.AddScoped<PackageAccessService>();
+builder.Services.AddHttpClient<IOpenRouterRoadmapService, OpenRouterRoadmapService>(client =>
+{
+    client.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
+    client.Timeout = TimeSpan.FromSeconds(90);
+});
 
 // Configure PayOS
 var payOsConfig = builder.Configuration.GetSection("PayOS");

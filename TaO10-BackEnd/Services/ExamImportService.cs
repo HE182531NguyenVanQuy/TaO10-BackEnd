@@ -182,7 +182,7 @@ public class ExamImportService : IExamImportService
             QuestionId = Guid.NewGuid(),
             ExamId = examId,
             QuestionNumber = isPassage ? 0 : row.QuestionNumber ?? 0,
-            Section = row.Section,
+            Section = QuestionTypeConstants.Normalize(row.Section, row.QuestionNumber),
             QuestionText = row.QuestionText,
             OptionA = isPassage ? null : NullIfNa(row.OptionA),
             OptionB = isPassage ? null : NullIfNa(row.OptionB),
@@ -198,7 +198,7 @@ public class ExamImportService : IExamImportService
 
     private static bool IsPassageRow(ExamExcelImportRow row) =>
         row.QuestionNumber == null ||
-        string.Equals(row.CorrectAnswer, NotApplicable, StringComparison.OrdinalIgnoreCase) ||
+        IsLiteralNotApplicable(row.CorrectAnswer) ||
         AllOptionsAreNotApplicable(row);
 
     private static bool AllOptionsAreNotApplicable(ExamExcelImportRow row) =>
@@ -213,6 +213,9 @@ public class ExamImportService : IExamImportService
     private static bool IsNotApplicable(string? value) =>
         string.IsNullOrWhiteSpace(value) ||
         string.Equals(value.Trim(), NotApplicable, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLiteralNotApplicable(string? value) =>
+        string.Equals(value?.Trim(), NotApplicable, StringComparison.OrdinalIgnoreCase);
 
     private static string? NormalizeLevel(string? value)
     {

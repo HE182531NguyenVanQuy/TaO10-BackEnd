@@ -16,11 +16,13 @@ public class AiRoadmapsController : ControllerBase
 {
     private readonly IAiRoadmapService _aiRoadmapService;
     private readonly ILogger<AiRoadmapsController> _logger;
+    private readonly PackageAccessService _packageAccessService;
 
-    public AiRoadmapsController(IAiRoadmapService aiRoadmapService, ILogger<AiRoadmapsController> logger)
+    public AiRoadmapsController(IAiRoadmapService aiRoadmapService, ILogger<AiRoadmapsController> logger, PackageAccessService packageAccessService)
     {
         _aiRoadmapService = aiRoadmapService;
         _logger = logger;
+        _packageAccessService = packageAccessService;
     }
 
     [HttpGet("me")]
@@ -50,19 +52,25 @@ public class AiRoadmapsController : ControllerBase
             return Unauthorized(ApiResponse<StudyRoadmapDto>.ErrorResponse("Bạn cần đăng nhập.", "UNAUTHORIZED", 401));
         }
 
+        if (!await _packageAccessService.HasActivePackageAsync(userId.Value, PackageAccessService.PracticeMinimumDays))
+        {
+            return StatusCode(403, ApiResponse<StudyRoadmapDto>.ErrorResponse(
+                "Tạo lộ trình học yêu cầu gói từ 3 tháng trở lên.", "PACKAGE_UPGRADE_REQUIRED", 403));
+        }
+
         try
         {
             var roadmap = await _aiRoadmapService.GenerateRoadmapAsync(userId.Value);
             return Ok(ApiResponse<StudyRoadmapDto>.SuccessResponse(roadmap, "Roadmap generated successfully"));
         }
-        catch (GeminiQuotaExceededException ex)
+        catch (OpenRouterQuotaExceededException ex)
         {
-            _logger.LogWarning(ex, "Gemini quota exceeded while generating roadmap for user {UserId}", userId);
+            _logger.LogWarning(ex, "OpenRouter quota exceeded while generating roadmap for user {UserId}", userId);
             return StatusCode(429, ApiResponse<StudyRoadmapDto>.ErrorResponse(ex.Message, ex.ErrorCode, 429));
         }
-        catch (GeminiUnavailableException ex)
+        catch (OpenRouterUnavailableException ex)
         {
-            _logger.LogWarning(ex, "Gemini unavailable while generating roadmap for user {UserId}", userId);
+            _logger.LogWarning(ex, "OpenRouter unavailable while generating roadmap for user {UserId}", userId);
             return StatusCode(503, ApiResponse<StudyRoadmapDto>.ErrorResponse(ex.Message, ex.ErrorCode, 503));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("ít nhất 1 lần", StringComparison.OrdinalIgnoreCase))
