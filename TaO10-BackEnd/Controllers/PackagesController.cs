@@ -159,6 +159,7 @@ namespace TaO10_BackEnd.Controllers
                     Status = up.Status.DisplayName ?? "Active",
                     IsActive = true,
                     ExamsCount = up.Package != null ? up.Package.PackageExams.Count : 0
+                    ,DurationTime = up.Package != null ? up.Package.DurationTime ?? 0 : 0
                 })
                 .ToListAsync();
 
@@ -202,6 +203,7 @@ namespace TaO10_BackEnd.Controllers
                     Status = userPackage.Status.DisplayName ?? "Active",
                     IsActive = true,
                     ExamsCount = userPackage.Package?.PackageExams?.Count ?? 0
+                    ,DurationTime = userPackage.Package?.DurationTime ?? 0
                 });
             }
 
@@ -216,6 +218,7 @@ namespace TaO10_BackEnd.Controllers
                 Status = "Inactive",
                 IsActive = false,
                 ExamsCount = 0
+                ,DurationTime = 0
             });
         }
 

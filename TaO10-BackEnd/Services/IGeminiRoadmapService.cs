@@ -2,7 +2,7 @@ using TaO10_BackEnd.Models;
 
 namespace TaO10_BackEnd.Services;
 
-public interface IGeminiRoadmapService
+public interface IOpenRouterRoadmapService
 {
     Task<GeneratedRoadmap> GenerateRoadmapAsync(UserExamAttempt attempt, CancellationToken cancellationToken = default);
 }

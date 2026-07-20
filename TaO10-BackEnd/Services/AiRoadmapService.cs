@@ -10,7 +10,7 @@ namespace TaO10_BackEnd.Services;
 public class AiRoadmapService : IAiRoadmapService
 {
     private readonly AppDbContext _dbContext;
-    private readonly IGeminiRoadmapService _geminiRoadmapService;
+    private readonly IOpenRouterRoadmapService _openRouterRoadmapService;
     private readonly ILogger<AiRoadmapService> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly IReadOnlyList<string> DefaultPracticeTypeOrder =
@@ -34,11 +34,11 @@ public class AiRoadmapService : IAiRoadmapService
 
     public AiRoadmapService(
         AppDbContext dbContext,
-        IGeminiRoadmapService geminiRoadmapService,
+        IOpenRouterRoadmapService openRouterRoadmapService,
         ILogger<AiRoadmapService> logger)
     {
         _dbContext = dbContext;
-        _geminiRoadmapService = geminiRoadmapService;
+        _openRouterRoadmapService = openRouterRoadmapService;
         _logger = logger;
     }
 
@@ -76,11 +76,11 @@ public class AiRoadmapService : IAiRoadmapService
     {
         try
         {
-            return await _geminiRoadmapService.GenerateRoadmapAsync(attempt);
+            return await _openRouterRoadmapService.GenerateRoadmapAsync(attempt);
         }
-        catch (Exception ex) when (ex is GeminiUnavailableException or GeminiQuotaExceededException or JsonException)
+        catch (Exception ex) when (ex is OpenRouterUnavailableException or OpenRouterQuotaExceededException or JsonException)
         {
-            _logger.LogWarning(ex, "Gemini roadmap failed. Using local fallback roadmap JSON.");
+            _logger.LogWarning(ex, "OpenRouter roadmap failed. Using local fallback roadmap JSON.");
             return AiRoadmapFallbackLibrary.GetRandomRoadmap();
         }
     }

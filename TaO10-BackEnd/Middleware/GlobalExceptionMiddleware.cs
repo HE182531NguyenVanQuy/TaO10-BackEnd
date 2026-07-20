@@ -69,12 +69,12 @@ public class GlobalExceptionMiddleware
                 response = ApiResponse.ErrorResponse(ex.Message, ex.ErrorCode, 400);
                 break;
 
-            case GeminiQuotaExceededException ex:
+            case OpenRouterQuotaExceededException ex:
                 context.Response.StatusCode = (int)HttpStatusCode.TooManyRequests;
                 response = ApiResponse.ErrorResponse(ex.Message, ex.ErrorCode, 429);
                 break;
 
-            case GeminiUnavailableException ex:
+            case OpenRouterUnavailableException ex:
                 context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
                 response = ApiResponse.ErrorResponse(ex.Message, ex.ErrorCode, 503);
                 break;

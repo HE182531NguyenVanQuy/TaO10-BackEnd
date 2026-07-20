@@ -1,12 +1,12 @@
 namespace TaO10_BackEnd.Exceptions;
 
-public class GeminiUnavailableException : Exception
+public class OpenRouterUnavailableException : Exception
 {
     public string ErrorCode { get; }
 
-    public GeminiUnavailableException(
-        string message = "Gemini đang quá tải, vui lòng thử lại sau ít phút.",
-        string errorCode = "GEMINI_UNAVAILABLE")
+    public OpenRouterUnavailableException(
+        string message = "OpenRouter đang quá tải, vui lòng thử lại sau ít phút.",
+        string errorCode = "OPENROUTER_UNAVAILABLE")
         : base(message)
     {
         ErrorCode = errorCode;

@@ -54,5 +54,6 @@ namespace TaO10_BackEnd.DTOs.Package
  public string Status { get; set; } = null!;
  public bool IsActive { get; set; }
  public int ExamsCount { get; set; }
+ public int DurationTime { get; set; }
  }
 }

@@ -10,5 +10,6 @@ namespace TaO10_BackEnd.Interfaces
         Task<TransactionPagedResponse> GetRecentTransactionsAsync(int pageNumber, int pageSize);
         Task<List<RevenueDataDto>> GetRevenueAnalyticsAsync(string period);
         Task<List<PackageStatDto>> GetPackageDistributionAsync();
+        Task<AdminReportDto> GetReportsAsync(DateTime? from, DateTime? to);
     }
 }

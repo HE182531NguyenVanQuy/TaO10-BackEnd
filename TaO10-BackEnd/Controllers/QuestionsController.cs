@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using TaO10_BackEnd.Common;
 using TaO10_BackEnd.DTOs.Questions;
 using TaO10_BackEnd.Models;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using TaO10_BackEnd.Services;
 
 namespace TaO10_BackEnd.Controllers;
 
@@ -13,11 +16,13 @@ public class QuestionsController : ControllerBase
     private const int MaxPracticeQuestions = 10;
     private readonly AppDbContext _dbContext;
     private readonly ILogger<QuestionsController> _logger;
+    private readonly PackageAccessService _packageAccessService;
 
-    public QuestionsController(AppDbContext dbContext, ILogger<QuestionsController> logger)
+    public QuestionsController(AppDbContext dbContext, ILogger<QuestionsController> logger, PackageAccessService packageAccessService)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _packageAccessService = packageAccessService;
     }
 
     [HttpGet("groups")]
@@ -58,11 +63,19 @@ public class QuestionsController : ControllerBase
         }
     }
 
+    [Authorize]
     [HttpGet("practice")]
     public async Task<IActionResult> GetPracticeQuestions([FromQuery] string type, [FromQuery] int take = MaxPracticeQuestions)
     {
         try
         {
+            var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+            if (!Guid.TryParse(userIdValue, out var userId)) return Unauthorized();
+            if (!await _packageAccessService.HasActivePackageAsync(userId, PackageAccessService.PracticeMinimumDays))
+            {
+                return StatusCode(403, ApiResponse<object>.ErrorResponse(
+                    "Luyện tập yêu cầu gói từ 3 tháng trở lên.", "PACKAGE_UPGRADE_REQUIRED", 403));
+            }
             if (string.IsNullOrWhiteSpace(type))
                 return BadRequest(ApiResponse<object>.ErrorResponse("Question type is required", "TYPE_REQUIRED", 400));
 

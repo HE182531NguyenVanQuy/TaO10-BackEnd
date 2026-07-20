@@ -8,18 +8,18 @@ using TaO10_BackEnd.Models;
 
 namespace TaO10_BackEnd.Services;
 
-public class GeminiRoadmapService : IGeminiRoadmapService
+public class OpenRouterRoadmapService : IOpenRouterRoadmapService
 {
-    private const int MaxAttemptsPerModel = 5;
+    private const int MaxAttempts = 2;
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
-    private readonly ILogger<GeminiRoadmapService> _logger;
+    private readonly ILogger<OpenRouterRoadmapService> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
-    public GeminiRoadmapService(
+    public OpenRouterRoadmapService(
         HttpClient httpClient,
         IConfiguration configuration,
-        ILogger<GeminiRoadmapService> logger)
+        ILogger<OpenRouterRoadmapService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
@@ -28,33 +28,19 @@ public class GeminiRoadmapService : IGeminiRoadmapService
 
     public async Task<GeneratedRoadmap> GenerateRoadmapAsync(UserExamAttempt attempt, CancellationToken cancellationToken = default)
     {
-        var apiKey = _configuration["Gemini:ApiKey"];
+        var apiKey = _configuration["OpenRouter:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new GeminiUnavailableException("Chưa cấu hình Gemini API key trên backend.");
+            throw new OpenRouterUnavailableException("Chưa cấu hình OpenRouter API key trên backend.");
         }
 
         var prompt = BuildPrompt(attempt);
-        var models = GetConfiguredModels();
-
-        for (var modelIndex = 0; modelIndex < models.Count; modelIndex++)
-        {
-            var model = models[modelIndex];
-            try
-            {
-                return await GenerateWithModelAsync(model, apiKey, prompt, cancellationToken);
-            }
-            catch (GeminiUnavailableException) when (modelIndex < models.Count - 1)
-            {
-                _logger.LogWarning(
-                    "Gemini model {Model} remained unavailable after {MaxAttempts} attempts. Falling back to {FallbackModel}.",
-                    model,
-                    MaxAttemptsPerModel,
-                    models[modelIndex + 1]);
-            }
-        }
-
-        throw new GeminiUnavailableException();
+        var model = _configuration["OpenRouter:Model"]?.Trim();
+        return await GenerateWithModelAsync(
+            string.IsNullOrWhiteSpace(model) ? "openrouter/free" : model,
+            apiKey,
+            prompt,
+            cancellationToken);
     }
 
     private async Task<GeneratedRoadmap> GenerateWithModelAsync(
@@ -63,38 +49,40 @@ public class GeminiRoadmapService : IGeminiRoadmapService
         string prompt,
         CancellationToken cancellationToken)
     {
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
         var requestBody = BuildRequestBody(prompt);
 
-        for (var attemptNumber = 1; attemptNumber <= MaxAttemptsPerModel; attemptNumber++)
+        for (var attemptNumber = 1; attemptNumber <= MaxAttempts; attemptNumber++)
         {
             var stopwatch = Stopwatch.StartNew();
 
             try
             {
-                using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+                using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions");
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                request.Headers.TryAddWithoutValidation("HTTP-Referer", _configuration["OpenRouter:SiteUrl"] ?? "https://tao10m.com");
+                request.Headers.TryAddWithoutValidation("X-Title", _configuration["OpenRouter:AppName"] ?? "TaO10");
+                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 stopwatch.Stop();
 
                 _logger.LogInformation(
-                    "Gemini request completed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. StatusCode: {StatusCode}. DurationMs: {DurationMs}. ResponseBody: {ResponseBody}",
+                    "OpenRouter request completed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. StatusCode: {StatusCode}. DurationMs: {DurationMs}",
                     model,
                     attemptNumber,
-                    MaxAttemptsPerModel,
+                    MaxAttempts,
                     prompt.Length,
                     (int)response.StatusCode,
-                    stopwatch.ElapsedMilliseconds,
-                    responseBody);
+                    stopwatch.ElapsedMilliseconds);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    return ParseGeminiRoadmapResponse(responseBody);
+                    return ParseOpenRouterRoadmapResponse(responseBody);
                 }
 
-                if (!ShouldRetry(response.StatusCode) || attemptNumber == MaxAttemptsPerModel)
+                if (!ShouldRetry(response.StatusCode) || attemptNumber == MaxAttempts)
                 {
-                    ThrowGeminiException(response.StatusCode);
+                    ThrowOpenRouterException(response.StatusCode);
                 }
             }
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
@@ -102,16 +90,16 @@ public class GeminiRoadmapService : IGeminiRoadmapService
                 stopwatch.Stop();
                 _logger.LogWarning(
                     ex,
-                    "Gemini request timed out. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
+                    "OpenRouter request timed out. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
                     model,
                     attemptNumber,
-                    MaxAttemptsPerModel,
+                    MaxAttempts,
                     prompt.Length,
                     stopwatch.ElapsedMilliseconds);
 
-                if (attemptNumber == MaxAttemptsPerModel)
+                if (attemptNumber == MaxAttempts)
                 {
-                    throw new GeminiUnavailableException();
+                    throw new OpenRouterUnavailableException();
                 }
             }
             catch (HttpRequestException ex)
@@ -119,60 +107,47 @@ public class GeminiRoadmapService : IGeminiRoadmapService
                 stopwatch.Stop();
                 _logger.LogWarning(
                     ex,
-                    "Gemini request failed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
+                    "OpenRouter request failed. Model: {Model}. Attempt: {AttemptNumber}/{MaxAttempts}. PromptLength: {PromptLength}. DurationMs: {DurationMs}",
                     model,
                     attemptNumber,
-                    MaxAttemptsPerModel,
+                    MaxAttempts,
                     prompt.Length,
                     stopwatch.ElapsedMilliseconds);
 
-                if (attemptNumber == MaxAttemptsPerModel)
+                if (attemptNumber == MaxAttempts)
                 {
-                    throw new GeminiUnavailableException();
+                    throw new OpenRouterUnavailableException();
                 }
             }
 
             var delay = GetRetryDelay(attemptNumber);
             _logger.LogInformation(
-                "Retrying Gemini request after {DelayMs}ms. Model: {Model}. NextAttempt: {NextAttempt}/{MaxAttempts}",
+                "Retrying OpenRouter request after {DelayMs}ms. Model: {Model}. NextAttempt: {NextAttempt}/{MaxAttempts}",
                 delay.TotalMilliseconds,
                 model,
                 attemptNumber + 1,
-                MaxAttemptsPerModel);
+                MaxAttempts);
             await Task.Delay(delay, cancellationToken);
         }
 
-        throw new GeminiUnavailableException();
-    }
-
-    private List<string> GetConfiguredModels()
-    {
-        var models = new[] { _configuration["Gemini:Model"], _configuration["Gemini:FallbackModel"] }
-            .Where(model => !string.IsNullOrWhiteSpace(model))
-            .Select(model => model!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return models.Count > 0 ? models : new List<string> { "gemini-2.5-flash" };
+        throw new OpenRouterUnavailableException();
     }
 
     private string BuildRequestBody(string prompt)
     {
         var request = new
         {
-            contents = new[]
+            model = _configuration["OpenRouter:Model"] ?? "openrouter/free",
+            messages = new[]
             {
                 new
                 {
                     role = "user",
-                    parts = new[] { new { text = prompt } }
+                    content = prompt
                 }
             },
-            generationConfig = new
-            {
-                temperature = 0.25,
-                responseMimeType = "application/json"
-            }
+            temperature = 0.25,
+            response_format = new { type = "json_object" }
         };
 
         return JsonSerializer.Serialize(request, _jsonOptions);
@@ -244,16 +219,14 @@ Dữ liệu:
 """;
     }
 
-    private GeneratedRoadmap ParseGeminiRoadmapResponse(string responseBody)
+    private GeneratedRoadmap ParseOpenRouterRoadmapResponse(string responseBody)
     {
-        var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody, _jsonOptions);
-        var text = string.Join(
-            string.Empty,
-            geminiResponse?.Candidates?.FirstOrDefault()?.Content?.Parts?.Select(part => part.Text ?? string.Empty) ?? Array.Empty<string>());
+        var openRouterResponse = JsonSerializer.Deserialize<OpenRouterResponse>(responseBody, _jsonOptions);
+        var text = openRouterResponse?.Choices?.FirstOrDefault()?.Message?.Content;
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            throw new GeminiUnavailableException("Gemini không trả về nội dung lộ trình.");
+            throw new OpenRouterUnavailableException("OpenRouter không trả về nội dung lộ trình.");
         }
 
         return ParseGeneratedRoadmap(text);
@@ -279,7 +252,7 @@ Dữ liệu:
         var roadmap = JsonSerializer.Deserialize<GeneratedRoadmap>(cleaned, _jsonOptions);
         if (roadmap == null)
         {
-            throw new GeminiUnavailableException("Không đọc được JSON lộ trình từ Gemini.");
+            throw new OpenRouterUnavailableException("Không đọc được JSON lộ trình từ OpenRouter.");
         }
 
         ValidateGeneratedRoadmap(roadmap);
@@ -311,7 +284,7 @@ Dữ liệu:
             string.IsNullOrWhiteSpace(roadmap.DailyTime) ||
             string.IsNullOrWhiteSpace(roadmap.NextAction))
         {
-            throw new GeminiUnavailableException("Gemini trả về lộ trình thiếu dữ liệu.");
+            throw new OpenRouterUnavailableException("OpenRouter trả về lộ trình thiếu dữ liệu.");
         }
     }
 
@@ -335,47 +308,42 @@ Dữ liệu:
         return TimeSpan.FromSeconds(exponentialSeconds) + TimeSpan.FromMilliseconds(jitterMs);
     }
 
-    private static void ThrowGeminiException(HttpStatusCode statusCode)
+    private static void ThrowOpenRouterException(HttpStatusCode statusCode)
     {
         if (statusCode == HttpStatusCode.Unauthorized || statusCode == HttpStatusCode.Forbidden)
         {
-            throw new GeminiUnavailableException("Gemini API key khong hop le hoac chua duoc cap quyen.");
+            throw new OpenRouterUnavailableException("OpenRouter API key không hợp lệ hoặc chưa được cấp quyền.");
         }
 
         if (statusCode == HttpStatusCode.TooManyRequests)
         {
-            throw new GeminiQuotaExceededException();
+            throw new OpenRouterQuotaExceededException();
         }
 
         if (statusCode == HttpStatusCode.ServiceUnavailable ||
             statusCode == HttpStatusCode.InternalServerError ||
             statusCode == HttpStatusCode.RequestTimeout)
         {
-            throw new GeminiUnavailableException();
+            throw new OpenRouterUnavailableException();
         }
 
-        throw new GeminiUnavailableException("Không gọi được Gemini để tạo lộ trình.");
+        throw new OpenRouterUnavailableException("Không gọi được OpenRouter để tạo lộ trình.");
     }
 
     private sealed record SectionQuestionResult(string Section, bool IsCorrect, bool IsSkipped);
 
-    private sealed class GeminiResponse
+    private sealed class OpenRouterResponse
     {
-        public List<GeminiCandidate>? Candidates { get; set; }
+        public List<OpenRouterChoice>? Choices { get; set; }
     }
 
-    private sealed class GeminiCandidate
+    private sealed class OpenRouterChoice
     {
-        public GeminiContent? Content { get; set; }
+        public OpenRouterMessage? Message { get; set; }
     }
 
-    private sealed class GeminiContent
+    private sealed class OpenRouterMessage
     {
-        public List<GeminiPart>? Parts { get; set; }
-    }
-
-    private sealed class GeminiPart
-    {
-        public string? Text { get; set; }
+        public string? Content { get; set; }
     }
 }
